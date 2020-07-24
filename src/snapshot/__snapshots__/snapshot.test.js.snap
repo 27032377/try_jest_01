@@ -1,0 +1,10 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Snapshot快照测试 1`] = `
+Object {
+  "desc": "测试",
+  "name": "jest",
+  "onChange": [Function],
+  "time": "2020",
+}
+`;
