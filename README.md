@@ -209,8 +209,77 @@ test('mockFn2', () => {
 })
 ```
 
+### 创建 `__mocks__` 文件夹，改变内部实现
+
 ## 快照 Snapshot
 
 > 我们在开发组件的过程中，往往需要为组件创建一份默认 `Props` 配置，在组件升级迭代时，我们有可能会增加或修改默认 `Props` 的配置，这样导致我们可能会修改错误某些配置而我们没有感知到，造成修改引入bug，为了避免这种情况，我们可以借助 `Snapshot` 生成文件快照历史记录，以便在每次修改时进行修改提示，使开发者感知修改。
 
 如果修改后的文件内容与快照不匹配，如果我们确定需要更新修改，那么我们可以通过控制台进入 `Jest` 命令模式，输入 `jest -u` 来确定更新快照。
+
+## 定时器 Timer
+
+其实也可以考虑使用 `aysnc` 的方式去进行测试，如果定时器设置的 `时间过于大` 的话，我们去进行等待就是不合理的了。
+
+### Timer Mocks
+
+> 原生的定时器函数并不是很方便测试，因为程序需要等待响应的延时。通过使用 `jest.useFakeTimers()`；来模拟定时器函数。如果需要运行多次测试，可以手动添加或者在 `beforeEach` 中添加，如果不这样做，将导致内部的定时器不被重置。
+
+```
+// timerGame.js
+function timerGame(callback) {
+    console.log('Ready...go!');
+    setTimeout(() => {
+        console.log('Time\'s up -- stop!');
+        callback && callback();
+    }, 1000);
+}
+
+module.exports = timerGame;
+```
+```
+// timerGame.test.js
+describe('mock useFakeTimers', () => {
+    jest.useFakeTimers();
+
+    it('waits 1 second before ending the game', () => {
+        const timerGame = require('./timerGame');
+        // timerGame计时器内部的回调函数并没有执行，被 mock 了
+        timerGame();
+        expect(setTimeout).toHaveBeenCalledTimes(1);
+        expect(setTimeout).toHaveBeenLastCalledWith(expect.any(Function), 1000);
+    })
+})
+```
+
+### Run All Timers & Advance Timers By Time
+
+快进并执行所有的定时器的回调函数
+
+```
+describe('Run All Timers', () => {
+    it('calls the callback after 1s', () => {
+        const timerGame = require('./timerGame');
+        const callback = jest.fn();
+
+        timerGame(callback);
+
+        // 在这个时间点，定时器的回调不应该被执行
+        expect(callback).not.toBeCalled();
+
+        // "快进"时间使得所有定时器回调被执行
+        // jest.runAllTimers();
+        jest.advanceTimersByTime(1000);
+
+        // 现在回调函数执行了
+        expect(callback).toBeCalled();
+        expect(callback).toHaveBeenCalledTimes(1);
+    })
+})
+```
+
+### Run Pending Timers
+
+> 在某些场景下，可能还需要"循环定时器"——在定时器的 callback 函数中再次设置一个新的定时器，这时候定时器一致运行下去将陷入死循环，此场景下不应该使用 `jest.runAllTimers()`，而使用 `jest.runOnlyPendingTimers()`。
+
+*jest.clearAllTimers() 清除所有 timers*
