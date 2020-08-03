@@ -44,7 +44,9 @@
   // 理解为 beforeEach jest.clearAllMocks()
   clearMocks: true,
   // globals全局对象
-  globals: {}
+  globals: {},
+  // 测试覆盖率
+  collectCoverage: true
 }
 ```
 
