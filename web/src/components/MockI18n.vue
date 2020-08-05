@@ -1,5 +1,5 @@
 <template>
-  <div>{{$t(msg)}}</div>
+  <div>{{$t('msg')}}</div>
 </template>
 
 <script>

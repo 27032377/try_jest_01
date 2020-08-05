@@ -11,7 +11,8 @@ module.exports = {
     __FRAME: 'VUE',
     __TEST: true
   },
-  collectCoverage: true
+  // 是否收集测试覆盖率
+  collectCoverage: false
 }
 
 // preset 如下内容为 vue 脚手架搭建时候的默认设置

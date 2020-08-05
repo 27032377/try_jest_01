@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import MockI18n from '@/components/MockI18n.vue'
+import lang from '../constant/lang.js'
 
 describe('<MockI18n />', () => {
   it('test Mock', () => {
@@ -9,9 +10,9 @@ describe('<MockI18n />', () => {
 
     const wrapper = mount(MockI18n, {
       mocks: {
-        $t: msg => msg
+        $t: msg => lang.ja[msg]
       }
     })
-    expect(wrapper.text()).toMatch('World')
+    expect(wrapper.text()).toBe('こんにちは、世界！')
   })
 })

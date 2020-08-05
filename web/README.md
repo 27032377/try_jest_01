@@ -1,6 +1,6 @@
 # Jest在Vue中的实践
 
-*如果是通过 `cli3` 脚手架搭建(选择Jest进行UT)，仅需要还依次安装 `vue-server-renderer` 和 `@vue/server-test-utils`*
+*SSR依次安装 `vue-server-renderer` 和 `@vue/server-test-utils`*
 
 根目录下的 Jest 配置文件
 ```
@@ -422,4 +422,237 @@ import { config } from '@vue/test-utils'
 
 ```
 enableAutoDestroy(afterEach)
+```
+
+## 实践 tips
+
+### 重构测试
+
+> Don't Repeat Yourself
+
+***用工厂函数重构***
+
+在几个测试 `shallowMount` 中都传入了一个相似的 `porpsData` 对象。一个工厂函数指示一个返回单个对象的简单函数 —— 它制造对象，这就是其名为“工厂”的原因。
+
+```
+// factory.js
+const msg  = "submit";
+const factory = propsData => {
+  return shallowMount(SubmitButton, {
+    porpsData: {
+      msg,
+      ...propsData
+    }
+  })
+}
+
+// submitButton.spec.js
+describe('SubmitButton', () => {
+  describe('dose not have admin privileges', () => {
+    it('render a message', () => {
+      const wrapper = factory()
+      expect(wrapper.find('span').text()).toBe('Not Authorized')
+      expect(wrapper.find('button').text()).toBe('submit')
+    })
+  })
+
+  describe('has admin privileges', () => {
+    it('renders a message', () => {
+      const wrapper = factory({ isAdmin: true })
+      expect(wrapper.find('span').text()).toBe('Admin Privileges')
+      expect(wrapper.find('button').text()).toBe('submit')
+    })
+  })
+})
+```
+
+### 用 `call` 进行测试
+
+```
+// NumberRenderer
+computed: {
+  numbers() {
+    const evens = []
+    const odds = []
+    for (let i = 1; i < 10; i++) {
+      if (i % 2 === 0) {
+        evens.push(i)
+      } else {
+        odds.push(i)
+      }
+    }
+    return this.even ? evens.join(', ') : odds.join(', ');
+  }
+}
+
+it('renders odd numbers', () => {
+  const localThis = { even: false }
+  expect(NumberRenderer.computed.numbers.call(localThis).toBe('1, 3, 5, 7, 9'))
+})
+```
+
+> Vue 自动将 `props` 绑定到 `this`。因为我们没有通过 `mount` 渲染过组件，所以 Vue 不为 this 绑定任何东西。这时候 `console.log(this)`，会发现上下文只有 `computed` 对象：`{ numbers: [Function: numbers] }`
+
+***用 `call` 还是 `mount`***
+
+call 可以在以下情况被使用：
+
+- 在测试一个生命周期方法中执行了某些耗时操作的组件，而想在针对计算属性的单元测试中绕过这些
+- 想 `stub` 掉 `this` 上的某些值。使用 `call` 并传递一个自定义的上下文会很有用
+
+### 模拟用户输入
+
+当用户提交表单时，会显示一条感谢消息。我们想要异步提交表单，所有使用了 `.prevent`，防止刷新页面。
+
+```
+// FormSubmitter
+<template>
+  <div>
+    <form @submit.prevent="handleSubmit">
+      <input v-model="username" data-username />
+      <input type="submit" />
+    </form>
+    <p class="message" v-if="submitted">
+      Thank you for your submission, {{ username }}
+    </p>
+  </div>
+</template>
+<script>
+  export default {
+    name: 'FormSubmitter',
+    data () {
+      return {
+        username: '',
+        submitted: false
+      }
+    },
+    methods: {
+      handleSubmit () {
+        this.submitted = true
+      }
+    }
+  }
+</script>
+```
+
+编写测试
+
+```
+import { shallowMount } from '@vue/test-utils'
+import FormSubmitter from '@/components/FormSubmitter.vue'
+
+describe('<FormSubmmitter>', () => {
+  it('reveals a notification when submitted', async () => {
+    const wrapper = shallowMount(FormSubmitter)
+    wrapper.find('[data-username]').setValue('alice')
+    wrapper.find('form').trigger('submit.prevent')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.message').text())
+      .toBe('Thank you for your submission, alice.')
+  })
+})
+```
+
+#### mock 一个 ajax 调用
+
+```
+// mockHttp.js
+const mockHttp = {
+  get (_url, _data) {
+    return new Promise((resolve, reject) => {
+      resolve()
+    })
+  }
+}
+```
+
+编写测试
+
+```
+import flushPromises from 'flush-promises'
+import mockHttp from './mockHttp.js'
+
+it('reveals a notification when submitted', async () => {
+  const wrapper = shallowMount(FormSubmitter, {
+    mocks: {
+      $http: mockHttp
+    }
+  })
+  wrapper.find("[data-username]").setValue("alice")
+  wrapper.find("form").trigger("submit.prevent")
+
+  // flush-promises 确保包括 nextTick 在内的所有 promises 都被 resolve
+  await flushPromises()
+
+  expect(wrapper.find(".message").text())
+    .toBe("Thank you for your submission, alice.")
+})
+```
+
+## 测试 Vuex - Mutations
+
+> mutations 易于遵循一套模式：取得一些数据，可能进行一些处理，然后将数据复制给 state
+
+```
+// mutations.js
+export default {
+  SET_POST (state, post) {
+    state.postIds.push(post.id)
+  }
+}
+
+// Mutations.spec.js
+import mutations from '@/store/mutations'
+
+describe('SET_POST', () => {
+  it('add a post to the state', () => {
+    const post = { id: 1 }
+    const state = {
+      postIds: []
+    }
+    mutations.SET_POST(state, post)
+    expect(state).toEqual({
+      postIds: [1]
+    })
+  })
+})
+```
+
+## 测试 Vuex - Actions
+
+我们通常会遵循一个 Vuex 模式创建一个 action:
+
+- 发起一个向 API 的异步请求
+- 对数据进行一些处理
+- 根据 payload 的结果 commit 一个 mutation
+
+```
+import actions from '@/store/actions.js'
+
+let url, body
+
+jest.mock('axios', () => {
+  return {
+    post (_url, _data) {
+      url = _url
+      body = _data
+      return Promise.resolve(true)
+    }
+  }
+})
+
+describe('authenticate', () => {
+  const commit = jest.fn()
+  const username = 'a'
+  const password = 'b'
+
+  it('test actions', async () => {
+    await actions.authenticate({ commit }, { username, password })
+    expect.assertions(3)
+    expect(url).toBe('/api/authenticate')
+    expect(body).toEqual({ username, password })
+    expect(commit).toHaveBeenCalledWith('SET_AUTH', true)
+  })
+})
+
 ```
